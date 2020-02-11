@@ -14,6 +14,11 @@ import subprocess
 import multiprocessing
 
 try:
+    from shlex import quote
+except:
+    from pipes import quote
+
+try:
     from urllib.request import urlopen
 except ImportError:
     from urllib2 import urlopen
@@ -161,6 +166,56 @@ def execute_make(log, cpu_count=None):
 
     execute(' '.join(cmd), log)
 
+def execute_cmake(srcdir, variant, toolchain, env, log):
+    cc = env['CC'] if 'CC' in env else '-'.join(
+        [s for s in [toolchain, 'gcc'] if s])
+
+    ld = env['CCLD'] if 'CCLD' in env else '-'.join(
+        [s for s in [toolchain, 'gcc'] if s])
+
+    ar = env['AR'] if 'AR' in env else '-'.join(
+        [s for s in [toolchain, 'ar'] if s])
+
+    ranlib = env['RANLIB'] if 'RANLIB' in env else '-'.join(
+        [s for s in [toolchain, 'ranlib'] if s])
+
+    cc, c_flags = split_cc(cc)
+
+    args = [
+        '-DCMAKE_C_COMPILER=%s'     % quote(cc),
+        '-DCMAKE_LINKER=%s'         % quote(ld),
+        '-DCMAKE_AR=%s'             % quote(ar),
+        '-DCMAKE_RANLIB=%s'         % quote(ranlib),
+        '-DCMAKE_FIND_ROOT_PATH=%s' % quote(getsysroot(toolchain)),
+        '-DCMAKE_POSITION_INDEPENDENT_CODE=ON',
+        '-DBUILD_STATIC_LIBS=ON',
+    ]
+
+    c_flags += [
+        # -fPIC should be set explicitly in older cmake versions
+        '-fPIC',
+        '-fvisibility=hidden',
+    ]
+
+    if variant == 'debug':
+        c_flags += [
+            # -ggdb is required for sanitizer backtrace
+            '-ggdb',
+        ]
+        args += [
+            '-DCMAKE_BUILD_TYPE=Debug',
+            '-DDEBUG:STRING=ON',
+            '-DCMAKE_C_FLAGS_DEBUG:STRING=%s' % quote(' '.join(c_flags)),
+        ]
+    else:
+        args += [
+            '-DCMAKE_BUILD_TYPE=Release',
+            '-DDEBUG:STRING=OFF',
+            '-DCMAKE_C_FLAGS_RELEASE:STRING=%s' % quote(' '.join(c_flags)),
+        ]
+
+    execute('cmake ' + srcdir + ' ' + ' '.join(args), log)
+
 def install_tree(src, dst, match=None, ignore=None):
     print('[install] %s' % os.path.relpath(dst, printdir))
 
@@ -253,6 +308,14 @@ def isgnu(toolchain):
     except:
         return False
 
+def split_cc(cc):
+    try:
+        import shlex
+        args = shlex.split(cc)
+        return args[0], args[1:]
+    except:
+        return cc, []
+
 def makeflags(workdir, toolchain, deplist, cflags='', ldflags='', variant=''):
     incdirs=[]
     libdirs=[]
@@ -278,18 +341,15 @@ def makeflags(workdir, toolchain, deplist, cflags='', ldflags='', variant=''):
         ldflags += ['-Wl,-rpath-link=%s' % path for path in libdirs]
 
     return ' '.join([
-        'CXXFLAGS="%s"' % ' '.join(cflags),
-        'CFLAGS="%s"' % ' '.join(cflags),
-        'LDFLAGS="%s"' % ' '.join(ldflags),
+        'CXXFLAGS=%s' % quote(' '.join(cflags)),
+        'CFLAGS=%s'   % quote(' '.join(cflags)),
+        'LDFLAGS=%s'  % quote(' '.join(ldflags)),
     ])
 
 def makeenv(envlist):
     ret = []
     for e in envlist:
-        if ' ' in e:
-            ret.append('"%s"' % e)
-        else:
-            ret.append(e)
+        ret.append(quote(e))
     return ' '.join(ret)
 
 if len(sys.argv) < 7:
@@ -344,6 +404,10 @@ if name == 'libuv':
     install_tree('include', os.path.join(builddir, 'include'))
     install_files('.libs/libuv.a', os.path.join(builddir, 'lib'))
 elif name == 'openfec':
+    if variant == 'debug':
+        dist = 'bin/Debug'
+    else:
+        dist = 'bin/Release'
     download(
       'https://github.com/roc-project/openfec/archive/v%s.tar.gz' % ver,
       'openfec_v%s.tar.gz' % ver,
@@ -354,43 +418,7 @@ elif name == 'openfec':
     os.chdir('src/openfec-%s' % ver)
     mkpath('build')
     os.chdir('build')
-    args = [
-        '-DCMAKE_C_COMPILER="%s"' % (
-            env['CC'] if 'CC' in env else '-'.join([s for s in [toolchain, 'gcc'] if s])
-        ),
-        '-DCMAKE_LINKER="%s"' % (
-            env['CCLD'] if 'CCLD' in env else '-'.join([s for s in [toolchain, 'gcc'] if s])
-        ),
-        '-DCMAKE_AR="%s"' % (
-            env['AR'] if 'AR' in env else '-'.join([s for s in [toolchain, 'ar'] if s])
-        ),
-        '-DCMAKE_RANLIB="%s"' % (
-            env['RANLIB'] if 'RANLIB' in env else '-'.join([s for s in [toolchain, 'ranlib'] if s])
-        ),
-        '-DCMAKE_FIND_ROOT_PATH="%s"' % getsysroot(toolchain),
-        '-DCMAKE_POSITION_INDEPENDENT_CODE=ON',
-        '-DBUILD_STATIC_LIBS=ON',
-        ]
-    if variant == 'debug':
-        dist = 'bin/Debug'
-        args += [
-            '-DCMAKE_BUILD_TYPE=Debug',
-            # enable debug symbols and logs
-            '-DDEBUG:STRING=ON',
-            # -ggdb is required for sanitizer backtrace
-            # -fPIC should be set explicitly in older cmake versions
-            '-DCMAKE_C_FLAGS_DEBUG:STRING="-ggdb -fPIC -fvisibility=hidden"',
-        ]
-    else:
-        dist = 'bin/Release'
-        args += [
-            '-DCMAKE_BUILD_TYPE=Release',
-            # disable debug symbols and logs
-            '-DDEBUG:STRING=OFF',
-            # -fPIC should be set explicitly in older cmake versions
-            '-DCMAKE_C_FLAGS_RELEASE:STRING="-fPIC -fvisibility=hidden"',
-        ]
-    execute('cmake .. ' + ' '.join(args), logfile)
+    execute_cmake('..', variant, toolchain, env, logfile)
     execute_make(logfile)
     os.chdir('..')
     install_tree('src', os.path.join(builddir, 'include'), match=['*.h'])
