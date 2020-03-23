@@ -30,7 +30,7 @@ public:
     const Format* format(unsigned int pt) const;
 
 private:
-    enum { MaxFormats = 2 };
+    enum { MaxFormats = 3 };
 
     Format formats_[MaxFormats];
     size_t n_formats_;

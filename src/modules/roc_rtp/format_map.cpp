@@ -55,6 +55,19 @@ FormatMap::FormatMap()
             new_codec_pcm_int16_2ch<audio::IFrameDecoder, audio::PCMDecoder>;
         add_(fmt);
     }
+    {
+        Format fmt;
+        fmt.payload_type = PayloadType_GSM;
+        fmt.flags = packet::Packet::FlagAudio;
+        fmt.sample_rate = 8000;
+        fmt.channel_mask = 0x3;
+        fmt.get_num_samples = audio::PCM_int16_1ch.samples_from_payload_size;
+        fmt.new_encoder =
+            new_codec_pcm_int16_1ch<audio::IFrameEncoder, audio::PCMEncoder>;
+        fmt.new_decoder =
+            new_codec_pcm_int16_1ch<audio::IFrameDecoder, audio::PCMDecoder>;
+        add_(fmt);
+    }
 }
 
 const Format* FormatMap::format(unsigned int pt) const {

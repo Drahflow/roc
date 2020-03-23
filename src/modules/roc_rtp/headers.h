@@ -27,6 +27,7 @@ enum Version {
 
 //! RTP payload type.
 enum PayloadType {
+    PayloadType_GSM = 3, //!< Audio, 16-bit samples, 1 channel, 8000 Hz.
     PayloadType_L16_Stereo = 10, //!< Audio, 16-bit samples, 2 channels, 44100 Hz.
     PayloadType_L16_Mono = 11    //!< Audio, 16-bit samples, 1 channel, 44100 Hz.
 };

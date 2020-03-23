@@ -108,7 +108,7 @@ struct SenderConfig {
         , input_channels(DefaultChannelMask)
         , internal_frame_size(DefaultInternalFrameSize)
         , packet_length(DefaultPacketLength)
-        , payload_type(rtp::PayloadType_L16_Stereo)
+        , payload_type(rtp::PayloadType_GSM)
         , resampling(false)
         , interleaving(false)
         , timing(false)
